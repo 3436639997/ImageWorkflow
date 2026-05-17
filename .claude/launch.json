@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "wails-dev",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["wails:dev"],
+      "port": 34115
+    }
+  ]
+}

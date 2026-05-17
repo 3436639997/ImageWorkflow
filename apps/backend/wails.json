@@ -1,0 +1,12 @@
+{
+  "$schema": "https://wails.io/schemas/config.v2.json",
+  "name": "ImageWorkflow",
+  "outputfilename": "imageworkflow",
+  "frontend:dir": "../web",
+  "frontend:build": "pnpm build:wails",
+  "frontend:dev:watcher": "pnpm dev --host 127.0.0.1 --port 34115",
+  "frontend:dev:serverUrl": "http://127.0.0.1:34115",
+  "assetdir": "frontend/dist",
+  "wailsjsdir": "../web/src/wailsjs",
+  "build:dir": "build/bin"
+}

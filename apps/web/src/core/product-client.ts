@@ -1,0 +1,53 @@
+import {
+	DeleteProduct,
+	DeleteProductImage,
+	GetProduct,
+	ListProducts,
+	SaveProduct,
+	UploadProductImage,
+	UploadProductImageFromPath,
+} from "../wailsjs/wailsjs/go/product/Service"
+import { product } from "../wailsjs/wailsjs/go/models"
+import type { Product } from "./types"
+
+export type ProductDetail = product.ProductDetail
+export type ProductImage = product.ProductImage
+
+function toLightProduct(p: product.Product): Product {
+	return {
+		product_id: p.product_id,
+		name: p.name,
+		category: p.category,
+		image_count: p.image_count,
+		has_plan: p.has_plan,
+		output_count: p.output_count,
+	}
+}
+
+export const productClient = {
+	async list(): Promise<Product[]> {
+		const items = await ListProducts()
+		return items.map(toLightProduct)
+	},
+	async listFull(): Promise<product.Product[]> {
+		return ListProducts()
+	},
+	get(productId: string): Promise<ProductDetail> {
+		return GetProduct(productId)
+	},
+	save(payload: product.Product): Promise<ProductDetail> {
+		return SaveProduct(payload)
+	},
+	delete(productId: string): Promise<void> {
+		return DeleteProduct(productId)
+	},
+	uploadImage(productId: string, filename: string, base64Data: string): Promise<ProductImage> {
+		return UploadProductImage(productId, filename, base64Data)
+	},
+	uploadImageFromPath(productId: string, srcPath: string): Promise<ProductImage> {
+		return UploadProductImageFromPath(productId, srcPath)
+	},
+	deleteImage(productId: string, filename: string): Promise<void> {
+		return DeleteProductImage(productId, filename)
+	},
+}

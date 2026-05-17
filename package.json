@@ -1,0 +1,26 @@
+{
+  "name": "ImageWorkflow",
+  "version": "0.0.1",
+  "private": true,
+  "scripts": {
+    "build": "turbo build",
+    "dev": "turbo dev",
+    "lint": "turbo lint",
+    "format": "turbo format",
+    "typecheck": "turbo typecheck",
+    "wails:doctor": "cd apps/backend && wails doctor",
+    "wails:dev": "cd apps/backend && wails dev",
+    "wails:sync-assets": "pnpm --filter web build && rm -rf apps/backend/frontend/dist && mkdir -p apps/backend/frontend/dist && cp -R apps/web/dist/. apps/backend/frontend/dist/",
+    "wails:build": "pnpm wails:sync-assets && cd apps/backend && wails build -clean"
+  },
+  "devDependencies": {
+    "prettier": "^3.8.1",
+    "prettier-plugin-tailwindcss": "^0.7.2",
+    "turbo": "^2.8.17",
+    "typescript": "5.9.3"
+  },
+  "packageManager": "pnpm@9.15.9",
+  "engines": {
+    "node": ">=20"
+  }
+}

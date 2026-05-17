@@ -10,6 +10,7 @@ import { Button } from "@workspace/ui/components/button"
 
 import { cacheClient } from "../core/cache-client"
 import { jobClient, type JobKind } from "../core/job-client"
+import { JOB_KIND_LABEL, JOB_STATUS_LABEL, JOB_STATUS_TONE } from "../core/job-meta"
 import { useJobStore } from "../core/job-store"
 import type { Product } from "../core/types"
 import { useConfirm } from "../shared/confirm.tsx"
@@ -24,22 +25,6 @@ const PRIMARY_ACTIONS: Array<{ key: JobKind; label: string; desc: string }> = [
 ]
 
 const ACTIONS = PRIMARY_ACTIONS
-
-const STATUS_TONE: Record<string, "default" | "success" | "warning" | "destructive"> = {
-  queued: "warning",
-  running: "warning",
-  succeeded: "success",
-  failed: "destructive",
-  cancelled: "default",
-}
-
-const STATUS_LABEL: Record<string, string> = {
-  queued: "排队中",
-  running: "运行中",
-  succeeded: "完成",
-  failed: "失败",
-  cancelled: "已取消",
-}
 
 export function GeneratePage({
   products,
@@ -96,6 +81,13 @@ export function GeneratePage({
     if (!selectedId) {
       notify.error("请先在产品页选择产品")
       return
+    }
+    // Pre-flight check: render-* kinds require an existing plan.
+    if (kind === "render" || kind === "render-main" || kind === "render-sku" || kind === "render-detail") {
+      if (!selected?.has_plan) {
+        notify.error("当前产品还没有 generation plan，请先执行「仅分析」或「分析并生图」")
+        return
+      }
     }
     if (kind !== "dry-run") {
       const meta = ACTIONS.find((a) => a.key === kind)
@@ -178,20 +170,20 @@ export function GeneratePage({
                   key={job.job_id}
                   className="flex items-center justify-between gap-3 rounded-lg border border-border px-3 py-2"
                 >
-                  <div className="min-w-0">
+                  <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
                       <span className="font-mono text-xs text-muted-foreground">
                         {job.job_id.slice(0, 8)}
                       </span>
-                      <span className="text-sm font-medium">{labelOf(job.kind)}</span>
+                      <span className="text-sm font-medium">{JOB_KIND_LABEL[job.kind] ?? job.kind}</span>
                     </div>
                     <div className="mt-0.5 truncate text-xs text-muted-foreground">
                       {job.created_at}
                       {job.error ? ` · ${job.error}` : ""}
                     </div>
                   </div>
-                  <Badge variant={STATUS_TONE[job.status] ?? "default"}>
-                    {STATUS_LABEL[job.status] ?? job.status}
+                  <Badge variant={JOB_STATUS_TONE[job.status] ?? "default"} className="shrink-0">
+                    {JOB_STATUS_LABEL[job.status] ?? job.status}
                   </Badge>
                 </div>
               ))}
@@ -244,11 +236,6 @@ function prettifyJSON(text: string) {
   } catch {
     return text
   }
-}
-
-function labelOf(kind: string) {
-  const found = ACTIONS.find((a) => a.key === kind)
-  return found ? found.label : kind
 }
 
 function Info({ label, value }: { label: string; value: string }) {

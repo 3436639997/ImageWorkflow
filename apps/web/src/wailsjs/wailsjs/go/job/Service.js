@@ -10,6 +10,10 @@ export function ClearCompleted() {
   return window['go']['job']['Service']['ClearCompleted']();
 }
 
+export function ClearCompletedFor(arg1) {
+  return window['go']['job']['Service']['ClearCompletedFor'](arg1);
+}
+
 export function GetJob(arg1) {
   return window['go']['job']['Service']['GetJob'](arg1);
 }

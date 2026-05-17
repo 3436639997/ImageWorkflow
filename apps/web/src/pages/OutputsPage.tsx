@@ -100,6 +100,10 @@ export function OutputsPage({ selectedId, products }: { selectedId: string; prod
     if (!selectedId) return
     const jobKind = RERUN_KIND[kind]
     if (!jobKind) return
+    if (!selected?.has_plan) {
+      notify.error("当前产品还没有 generation plan，请先在「生成」tab 执行「仅分析」或「分析并生图」")
+      return
+    }
     const ok = await confirm({
       title: `重跑 ${label}？`,
       description: `${RERUN_DESC[kind] ?? ""}\n产品：${selectedId}`,
@@ -116,6 +120,10 @@ export function OutputsPage({ selectedId, products }: { selectedId: string; prod
 
   async function rerunAll() {
     if (!selectedId) return
+    if (!selected?.has_plan) {
+      notify.error("当前产品还没有 generation plan，请先在「生成」tab 执行「仅分析」或「分析并生图」")
+      return
+    }
     const ok = await confirm({
       title: "重跑全部图？",
       description: `将根据现有 plan 调用生图 API 渲染所有图（主图 + SKU + 细节图），可能消耗配额。\n产品：${selectedId}`,

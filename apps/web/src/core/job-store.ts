@@ -1,21 +1,12 @@
 import { useEffect, useSyncExternalStore } from "react"
 
 import { jobClient, type Job } from "./job-client"
+import { JOB_KIND_LABEL, TERMINAL_JOB_STATUSES } from "./job-meta"
 import { message } from "../shared/message"
 
 type State = {
 	jobs: Job[]
 	loaded: boolean
-}
-
-const KIND_LABEL: Record<string, string> = {
-	generate: "分析并生图",
-	analyze: "仅分析",
-	render: "按计划生图",
-	"render-main": "仅主图",
-	"render-sku": "仅 SKU",
-	"render-detail": "仅细节图",
-	"dry-run": "试运行",
 }
 
 const listeners = new Set<() => void>()
@@ -42,10 +33,9 @@ function upsertJob(jobs: Job[], job: Job): Job[] {
 
 function notifyOnTerminal(prev: Job | undefined, next: Job) {
 	// Only notify when status crosses from non-terminal → terminal in this update.
-	const terminal = ["succeeded", "failed", "cancelled"]
-	if (!terminal.includes(next.status)) return
-	if (prev && terminal.includes(prev.status)) return // already notified
-	const label = `${KIND_LABEL[next.kind] ?? next.kind} (${next.product_id || "-"})`
+	if (!TERMINAL_JOB_STATUSES.includes(next.status)) return
+	if (prev && TERMINAL_JOB_STATUSES.includes(prev.status)) return // already notified
+	const label = `${JOB_KIND_LABEL[next.kind] ?? next.kind} (${next.product_id || "-"})`
 	switch (next.status) {
 		case "succeeded":
 			message.success(`任务已完成：${label}`)

@@ -295,15 +295,9 @@ func runRenderStage(ctx context.Context, cfg Config, spec ProductSpec, images []
 		return nil, fmt.Errorf("IMAGE_API_KEY 未配置，无法渲染")
 	}
 
-	// Try to load whatever plan is on disk; if missing/stale, recompute snapshot
-	// using fallback styles so we never block render-only runs.
 	plan := loadAnyPlan(cfg.Workspace, spec.ProductID)
 	if plan == nil {
-		assignments := AssignImagesToColors(spec, images)
-		hero := ChooseHeroColor(spec, spec.Colors())
-		fallback := Fallback(spec, assignments, hero)
-		plan = &fallback
-		logger.Printf("[render] 没有现成 plan，使用 fallback")
+		return nil, fmt.Errorf("未找到 generation plan，请先执行「仅分析」或「分析并生图」生成 plan")
 	}
 
 	globalStyle := FallbackGlobalStylePrompt()

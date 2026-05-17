@@ -249,16 +249,25 @@ func (s *Service) JobLogs(jobID string) (string, error) {
 // ClearCompleted removes all jobs whose status is not queued/running. Their
 // log files are deleted as well. Returns the number of removed jobs.
 func (s *Service) ClearCompleted() (int, error) {
+	return s.ClearCompletedFor("")
+}
+
+// ClearCompletedFor removes finished jobs scoped to a productID. When
+// productID is empty, every finished job is removed (legacy behavior).
+// Queued/running jobs are always preserved.
+func (s *Service) ClearCompletedFor(productID string) (int, error) {
 	s.mu.Lock()
 	keep := s.jobs[:0]
 	removed := 0
 	var dropped []*Job
 	for _, j := range s.jobs {
-		if j.Status == StatusQueued || j.Status == StatusRunning {
-			keep = append(keep, j)
-		} else {
+		isFinished := j.Status != StatusQueued && j.Status != StatusRunning
+		matchesScope := productID == "" || j.ProductID == productID
+		if isFinished && matchesScope {
 			dropped = append(dropped, j)
 			removed++
+		} else {
+			keep = append(keep, j)
 		}
 	}
 	s.jobs = keep

@@ -4,53 +4,43 @@ import { Badge } from "@workspace/ui/components/badge"
 import { Button } from "@workspace/ui/components/button"
 
 import { jobClient, type Job } from "../core/job-client"
-import { useJobStore } from "../core/job-store"
+import { JOB_KIND_LABEL, JOB_STATUS_LABEL, JOB_STATUS_TONE } from "../core/job-meta"
+import { jobStore, useJobStore } from "../core/job-store"
 import { useConfirm } from "../shared/confirm.tsx"
 import { useMessage } from "../shared/message.tsx"
 import { SectionCard } from "../shared/section"
 
-const STATUS_TONE: Record<string, "default" | "success" | "warning" | "destructive"> = {
-  queued: "warning",
-  running: "warning",
-  succeeded: "success",
-  failed: "destructive",
-  cancelled: "default",
-}
-
-const STATUS_LABEL: Record<string, string> = {
-  queued: "排队中",
-  running: "运行中",
-  succeeded: "完成",
-  failed: "失败",
-  cancelled: "已取消",
-}
-
-const KIND_LABEL: Record<string, string> = {
-  generate: "分析并生图",
-  analyze: "仅分析",
-  render: "按计划生图",
-  "render-main": "仅主图",
-  "render-sku": "仅 SKU",
-  "render-detail": "仅细节图",
-  "dry-run": "试运行",
-}
-
-export function LogsPage() {
+export function LogsPage({ productId }: { productId?: string } = {}) {
   const { jobs, loaded } = useJobStore()
   const [selectedId, setSelectedId] = useState<string>("")
   const [showAll, setShowAll] = useState(false)
+  const [scope, setScope] = useState<"current" | "all">(productId ? "current" : "all")
   const [logText, setLogText] = useState<string>("")
   const [busy, setBusy] = useState(false)
   const notify = useMessage()
   const confirm = useConfirm()
   const [now, setNow] = useState(() => Date.now())
 
-  // Auto-select first job
+  // When the bound product changes, reset scope to follow it.
   useEffect(() => {
-    if (!selectedId && jobs.length > 0) {
-      setSelectedId(jobs[0].job_id)
+    setScope(productId ? "current" : "all")
+  }, [productId])
+
+  const filteredJobs = useMemo(() => {
+    if (!productId || scope === "all") return jobs
+    return jobs.filter((j) => j.product_id === productId)
+  }, [jobs, productId, scope])
+
+  // Auto-select first visible job when current selection is filtered out.
+  useEffect(() => {
+    if (filteredJobs.length === 0) {
+      if (selectedId) setSelectedId("")
+      return
     }
-  }, [jobs, selectedId])
+    if (!selectedId || !filteredJobs.some((j) => j.job_id === selectedId)) {
+      setSelectedId(filteredJobs[0].job_id)
+    }
+  }, [filteredJobs, selectedId])
 
   const selected = useMemo(
     () => jobs.find((j) => j.job_id === selectedId) ?? null,
@@ -143,44 +133,49 @@ export function LogsPage() {
   }
 
   async function clearCompleted() {
-    const completedCount = jobs.filter(
-      (j) => j.status !== "queued" && j.status !== "running"
-    ).length
-    if (completedCount === 0) {
+    const candidates = jobs.filter((j) => {
+      const finished = j.status !== "queued" && j.status !== "running"
+      const inScope = !productId || scope === "all" || j.product_id === productId
+      return finished && inScope
+    })
+    if (candidates.length === 0) {
       notify.info("没有已完成的任务可清空")
       return
     }
+    const scopeLabel = productId && scope === "current" ? "当前产品" : "全部产品"
     const ok = await confirm({
       tone: "danger",
       title: "清空已完成任务？",
-      description: `将删除 ${completedCount} 个已完成 / 失败 / 取消的任务及其日志。运行中和排队中的任务保留。`,
+      description: `将删除 ${scopeLabel}下 ${candidates.length} 个已完成 / 失败 / 取消的任务及其日志。运行中和排队中的任务保留。`,
       confirmLabel: "清空",
     })
     if (!ok) return
     try {
-      const removed = await jobClient.clearCompleted()
+      const targetProductId = productId && scope === "current" ? productId : ""
+      const removed = await jobClient.clearCompletedFor(targetProductId)
+      await jobStore.refresh()
       notify.success(`已清空 ${removed} 个任务`)
-      const stillExists = jobs.find(
-        (j) =>
-          j.job_id === selectedId &&
-          (j.status === "queued" || j.status === "running")
-      )
-      if (!stillExists) setSelectedId("")
     } catch (err) {
       notify.error(err instanceof Error ? err.message : String(err))
     }
   }
 
   const visibleJobs = useMemo(() => {
-    if (showAll) return jobs
-    return jobs.slice(0, 8)
-  }, [jobs, showAll])
+    if (showAll) return filteredJobs
+    return filteredJobs.slice(0, 8)
+  }, [filteredJobs, showAll])
 
   return (
     <div className="grid gap-4 xl:grid-cols-[340px_minmax(0,1fr)]">
       <SectionCard
         title="任务列表"
-        description={`共 ${jobs.length} 个任务，最新优先`}
+        description={
+          productId
+            ? scope === "current"
+              ? `当前产品 ${filteredJobs.length} 个任务`
+              : `全部 ${jobs.length} 个任务`
+            : `共 ${jobs.length} 个任务，最新优先`
+        }
         right={
           jobs.length > 0 ? (
             <Button
@@ -194,13 +189,43 @@ export function LogsPage() {
           ) : null
         }
       >
+        {productId ? (
+          <div className="mb-3 inline-flex rounded-lg border border-border p-0.5 text-xs">
+            <button
+              type="button"
+              onClick={() => setScope("current")}
+              className={[
+                "rounded-md px-3 py-1 transition-colors",
+                scope === "current"
+                  ? "bg-primary text-primary-foreground"
+                  : "text-muted-foreground hover:bg-muted",
+              ].join(" ")}
+            >
+              当前产品
+            </button>
+            <button
+              type="button"
+              onClick={() => setScope("all")}
+              className={[
+                "rounded-md px-3 py-1 transition-colors",
+                scope === "all"
+                  ? "bg-primary text-primary-foreground"
+                  : "text-muted-foreground hover:bg-muted",
+              ].join(" ")}
+            >
+              全部产品
+            </button>
+          </div>
+        ) : null}
         {!loaded ? (
           <div className="rounded-lg border border-dashed border-border p-6 text-sm text-muted-foreground">
             加载中...
           </div>
-        ) : jobs.length === 0 ? (
+        ) : filteredJobs.length === 0 ? (
           <div className="rounded-lg border border-dashed border-border p-6 text-sm text-muted-foreground">
-            暂无任务，去「生成」页发起一个吧。
+            {productId && scope === "current"
+              ? "当前产品暂无任务，去「生成」tab 发起一个吧。"
+              : "暂无任务，去「生成」tab 发起一个吧。"}
           </div>
         ) : (
           <div className="space-y-1.5">
@@ -221,7 +246,7 @@ export function LogsPage() {
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
                         <span className="text-sm font-medium">
-                          {KIND_LABEL[job.kind] ?? job.kind}
+                          {JOB_KIND_LABEL[job.kind] ?? job.kind}
                         </span>
                         <span className="font-mono text-[10px] text-muted-foreground">
                           {job.job_id.slice(0, 8)}
@@ -232,8 +257,8 @@ export function LogsPage() {
                       </div>
                     </div>
                     <div className="flex items-center gap-1">
-                      <Badge variant={STATUS_TONE[job.status] ?? "default"}>
-                        {STATUS_LABEL[job.status] ?? job.status}
+                      <Badge variant={JOB_STATUS_TONE[job.status] ?? "default"}>
+                        {JOB_STATUS_LABEL[job.status] ?? job.status}
                       </Badge>
                       {cancellable ? (
                         <button
@@ -254,16 +279,16 @@ export function LogsPage() {
                 </div>
               )
             })}
-            {!showAll && jobs.length > 8 ? (
+            {!showAll && filteredJobs.length > 8 ? (
               <button
                 type="button"
                 onClick={() => setShowAll(true)}
                 className="w-full rounded-lg border border-dashed border-border px-3 py-2 text-center text-xs text-muted-foreground hover:bg-muted/50"
               >
-                显示全部（{jobs.length - 8} 个更早的任务）
+                显示全部（{filteredJobs.length - 8} 个更早的任务）
               </button>
             ) : null}
-            {showAll && jobs.length > 8 ? (
+            {showAll && filteredJobs.length > 8 ? (
               <button
                 type="button"
                 onClick={() => setShowAll(false)}
@@ -294,9 +319,9 @@ export function LogsPage() {
         ) : (
           <div className="space-y-4">
             <div className="grid gap-3 md:grid-cols-3">
-              <Info label="动作" value={KIND_LABEL[selected.kind] ?? selected.kind} />
+              <Info label="动作" value={JOB_KIND_LABEL[selected.kind] ?? selected.kind} />
               <Info label="产品" value={selected.product_id || "-"} />
-              <Info label="状态" value={STATUS_LABEL[selected.status] ?? selected.status} />
+              <Info label="状态" value={JOB_STATUS_LABEL[selected.status] ?? selected.status} />
               <Info label="创建于" value={fmtTime(selected.created_at)} />
               <Info label="开始于" value={fmtTime(selected.started_at)} />
               <Info label="结束于" value={fmtTime(selected.finished_at)} />

@@ -1,4 +1,5 @@
-export type PageKey = "settings" | "products" | "generate" | "outputs" | "cache" | "logs"
+export type TopPage = "products" | "cache" | "settings"
+export type ProductTab = "assets" | "generate" | "outputs" | "logs"
 
 export type Product = {
   product_id: string
@@ -30,16 +31,4 @@ export type CacheItem = {
   group: "global_style" | "category_style" | "generation_plan" | "other"
   size: number
   updatedAt: string
-}
-
-export type JobStatus = "queued" | "running" | "succeeded" | "failed"
-
-export type Job = {
-  job_id: string
-  product_id: string
-  kind: "generate" | "analyze" | "render" | "dry-run"
-  status: JobStatus
-  logs: string
-  error?: string
-  createdAt: string
 }

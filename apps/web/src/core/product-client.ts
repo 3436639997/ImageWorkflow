@@ -13,6 +13,19 @@ import type { Product } from "./types"
 export type ProductDetail = product.ProductDetail
 export type ProductImage = product.ProductImage
 
+export type ProductCreateInput = {
+	product_id: string
+	name: string
+	category: string
+	description: string
+	keywords: string
+	colors_text: string
+	hero_color: string
+	color_image_map: string
+	detail_image_count: number
+	notes: string
+}
+
 function toLightProduct(p: product.Product): Product {
 	return {
 		product_id: p.product_id,
@@ -35,7 +48,13 @@ export const productClient = {
 	get(productId: string): Promise<ProductDetail> {
 		return GetProduct(productId)
 	},
-	save(payload: product.Product): Promise<ProductDetail> {
+	save(input: ProductCreateInput): Promise<ProductDetail> {
+		const payload = product.Product.createFrom({
+			...input,
+			image_count: 0,
+			has_plan: false,
+			output_count: 0,
+		})
 		return SaveProduct(payload)
 	},
 	delete(productId: string): Promise<void> {

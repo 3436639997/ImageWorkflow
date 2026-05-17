@@ -7,6 +7,8 @@ export function CancelJob(arg1:string):Promise<void>;
 
 export function ClearCompleted():Promise<number>;
 
+export function ClearCompletedFor(arg1:string):Promise<number>;
+
 export function GetJob(arg1:string):Promise<job.Job>;
 
 export function JobLogs(arg1:string):Promise<string>;

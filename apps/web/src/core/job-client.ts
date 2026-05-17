@@ -1,6 +1,7 @@
 import {
 	CancelJob,
 	ClearCompleted,
+	ClearCompletedFor,
 	GetJob,
 	JobLogs,
 	ListJobs,
@@ -40,6 +41,9 @@ export const jobClient = {
 	},
 	clearCompleted(): Promise<number> {
 		return ClearCompleted()
+	},
+	clearCompletedFor(productId: string): Promise<number> {
+		return ClearCompletedFor(productId)
 	},
 	onUpdate(handler: (job: Job) => void): () => void {
 		return EventsOn(JOB_EVENT, handler as (...args: unknown[]) => void)

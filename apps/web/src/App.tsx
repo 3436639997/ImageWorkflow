@@ -1,17 +1,17 @@
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 
-import { AppShell } from "./layout/shell"
+import { SidebarInset, SidebarProvider } from "@workspace/ui/components/sidebar"
+
+import { AppSidebar } from "./layout/app-sidebar"
 import { productClient } from "./core/product-client"
-import type { PageKey, Product } from "./core/types"
-import { SettingsPage } from "./pages/SettingsPage"
-import { ProductsPage } from "./pages/ProductsPage"
-import { GeneratePage } from "./pages/GeneratePage"
-import { OutputsPage } from "./pages/OutputsPage"
+import type { Product, ProductTab, TopPage } from "./core/types"
 import { CachePage } from "./pages/CachePage"
-import { LogsPage } from "./pages/LogsPage"
+import { ProductsLayout } from "./pages/products/ProductsLayout"
+import { SettingsPage } from "./pages/SettingsPage"
 
 export function App() {
-  const [page, setPage] = useState<PageKey>("products")
+  const [topPage, setTopPage] = useState<TopPage>("products")
+  const [productTab, setProductTab] = useState<ProductTab>("assets")
   const [products, setProducts] = useState<Product[]>([])
   const [selectedId, setSelectedId] = useState("")
 
@@ -28,35 +28,29 @@ export function App() {
     void refreshProducts()
   }, [refreshProducts])
 
-  const content = useMemo(() => {
-    switch (page) {
-      case "settings":
-        return <SettingsPage />
-      case "products":
-        return (
-          <ProductsPage
+  return (
+    <SidebarProvider defaultOpen>
+      <AppSidebar topPage={topPage} onChangePage={setTopPage} />
+      <SidebarInset className="h-screen overflow-hidden">
+        {topPage === "products" ? (
+          <ProductsLayout
             products={products}
             selectedId={selectedId}
+            productTab={productTab}
             onSelect={setSelectedId}
+            onChangeTab={setProductTab}
             onProductsChange={() => void refreshProducts()}
           />
-        )
-      case "generate":
-        return <GeneratePage products={products} selectedId={selectedId} />
-      case "outputs":
-        return <OutputsPage products={products} selectedId={selectedId} />
-      case "cache":
-        return <CachePage />
-      case "logs":
-        return <LogsPage />
-      default:
-        return null
-    }
-  }, [page, products, selectedId, refreshProducts])
-
-  return (
-    <AppShell page={page} onChangePage={setPage}>
-      {content}
-    </AppShell>
+        ) : topPage === "cache" ? (
+          <div className="min-h-0 flex-1 overflow-y-auto p-5">
+            <CachePage />
+          </div>
+        ) : (
+          <div className="min-h-0 flex-1 overflow-y-auto p-5">
+            <SettingsPage />
+          </div>
+        )}
+      </SidebarInset>
+    </SidebarProvider>
   )
 }

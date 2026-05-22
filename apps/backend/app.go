@@ -15,6 +15,7 @@ import (
 	"ImageWorkflow/apps/backend/internal/pipeline"
 	"ImageWorkflow/apps/backend/internal/product"
 	"ImageWorkflow/apps/backend/internal/settings"
+	"ImageWorkflow/apps/backend/internal/style"
 	"ImageWorkflow/apps/backend/internal/system"
 	"ImageWorkflow/apps/backend/internal/workspace"
 )
@@ -28,6 +29,7 @@ type App struct {
 	cache      *cache.Service
 	manifest   *manifest.Service
 	job        *job.Service
+	style      *style.Service
 	fileServer *fileserver.Server
 	workspace  *workspace.Resolver
 }
@@ -52,16 +54,19 @@ func NewApp() *App {
 		}
 		return time.Duration(n) * time.Second
 	})
-	pipeline.RegisterRunners(jb, set, ws, mf)
+	styleService := style.NewService(ws, set)
+	styleLoader := style.NewStyleLoaderAdapter(styleService)
+	pipeline.RegisterRunners(jb, set, ws, mf, styleLoader)
 	return &App{
 		workspace:  ws,
 		system:     system.NewService(fs, ws),
 		settings:   set,
-		product:    product.NewService(ws, mf),
+		product:    product.NewService(ws, mf, set),
 		output:     output.NewService(ws),
 		cache:      cache.NewService(ws),
 		manifest:   mf,
 		job:        jb,
+		style:      styleService,
 		fileServer: fs,
 	}
 }

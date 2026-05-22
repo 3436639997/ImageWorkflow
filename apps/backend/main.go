@@ -41,6 +41,7 @@ func main() {
 			app.output,
 			app.cache,
 			app.job,
+			app.style,
 		},
 	})
 	if err != nil {

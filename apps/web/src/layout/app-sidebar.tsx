@@ -1,4 +1,5 @@
 import {
+  AiMagicIcon,
   DatabaseIcon,
   Moon02Icon,
   PackageIcon,
@@ -26,6 +27,7 @@ import type { TopPage } from "../core/types"
 
 const PRIMARY_NAV: Array<{ key: TopPage; label: string; icon: typeof PackageIcon }> = [
   { key: "products", label: "产品", icon: PackageIcon },
+  { key: "styles", label: "风格参考", icon: AiMagicIcon },
   { key: "cache", label: "缓存", icon: DatabaseIcon },
 ]
 

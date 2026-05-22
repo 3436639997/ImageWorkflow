@@ -8,6 +8,7 @@ import type { Product, ProductTab, TopPage } from "./core/types"
 import { CachePage } from "./pages/CachePage"
 import { ProductsLayout } from "./pages/products/ProductsLayout"
 import { SettingsPage } from "./pages/SettingsPage"
+import { StylesPage } from "./pages/StylesPage"
 
 export function App() {
   const [topPage, setTopPage] = useState<TopPage>("products")
@@ -41,6 +42,10 @@ export function App() {
             onChangeTab={setProductTab}
             onProductsChange={() => void refreshProducts()}
           />
+        ) : topPage === "styles" ? (
+          <div className="min-h-0 flex-1 overflow-y-auto p-5">
+            <StylesPage />
+          </div>
         ) : topPage === "cache" ? (
           <div className="min-h-0 flex-1 overflow-y-auto p-5">
             <CachePage />

@@ -42,6 +42,9 @@ type Config struct {
 	RequestTimeout   time.Duration
 
 	Mock bool // dry-run / test mode: no API calls, copy/letterbox source
+
+	// Style loader for loading style prompts by ID
+	StyleLoader StyleLoader
 }
 
 // NewImageClient builds an image-edit client from the resolved config.
@@ -125,22 +128,23 @@ func splitList(s string) []string {
 }
 
 // RegisterRunners registers the pipeline runners on the job service.
-func RegisterRunners(jb *job.Service, set *settings.Service, ws *workspace.Resolver, mf *manifest.Service) {
-	jb.Register("dry-run", makeRunner(set, ws, mf, runDryRun))
-	jb.Register("analyze", makeRunner(set, ws, mf, runAnalyze))
-	jb.Register("render", makeRunner(set, ws, mf, runRender))
-	jb.Register("generate", makeRunner(set, ws, mf, runGenerate))
-	jb.Register("render-main", makeRunner(set, ws, mf, runRenderMain))
-	jb.Register("render-sku", makeRunner(set, ws, mf, runRenderSKU))
-	jb.Register("render-detail", makeRunner(set, ws, mf, runRenderDetail))
+func RegisterRunners(jb *job.Service, set *settings.Service, ws *workspace.Resolver, mf *manifest.Service, styleLoader StyleLoader) {
+	jb.Register("dry-run", makeRunner(set, ws, mf, styleLoader, runDryRun))
+	jb.Register("analyze", makeRunner(set, ws, mf, styleLoader, runAnalyze))
+	jb.Register("render", makeRunner(set, ws, mf, styleLoader, runRender))
+	jb.Register("generate", makeRunner(set, ws, mf, styleLoader, runGenerate))
+	jb.Register("render-main", makeRunner(set, ws, mf, styleLoader, runRenderMain))
+	jb.Register("render-sku", makeRunner(set, ws, mf, styleLoader, runRenderSKU))
+	jb.Register("render-detail", makeRunner(set, ws, mf, styleLoader, runRenderDetail))
 }
 
-func makeRunner(set *settings.Service, ws *workspace.Resolver, mf *manifest.Service, fn func(context.Context, Config, ProductSpec, []string, *log.Logger) (map[string]interface{}, error)) job.Runner {
+func makeRunner(set *settings.Service, ws *workspace.Resolver, mf *manifest.Service, styleLoader StyleLoader, fn func(context.Context, Config, ProductSpec, []string, string, *log.Logger) (map[string]interface{}, error)) job.Runner {
 	return func(ctx context.Context, j *job.Job, logger *log.Logger) (map[string]interface{}, error) {
 		cfg, err := resolveConfig(ws, mf, set)
 		if err != nil {
 			return nil, fmt.Errorf("加载设置失败: %w", err)
 		}
+		cfg.StyleLoader = styleLoader
 		row, err := mf.GetRow(j.ProductID)
 		if err != nil {
 			return nil, fmt.Errorf("读取产品 manifest 失败: %w", err)
@@ -156,7 +160,14 @@ func makeRunner(set *settings.Service, ws *workspace.Resolver, mf *manifest.Serv
 		if len(images) == 0 {
 			return nil, fmt.Errorf("产品 %s 下没有素材图，请先在产品页上传图片", j.ProductID)
 		}
-		return fn(ctx, cfg, spec, images, logger)
+		// Extract globalStyleID from job options
+		globalStyleID := ""
+		if j.Options != nil {
+			if id, ok := j.Options["global_style_id"].(string); ok {
+				globalStyleID = id
+			}
+		}
+		return fn(ctx, cfg, spec, images, globalStyleID, logger)
 	}
 }
 
@@ -186,7 +197,7 @@ func listProductImages(ws *workspace.Resolver, productID string) ([]string, erro
 
 // --- Runner implementations ---
 
-func runDryRun(ctx context.Context, cfg Config, spec ProductSpec, images []string, logger *log.Logger) (map[string]interface{}, error) {
+func runDryRun(ctx context.Context, cfg Config, spec ProductSpec, images []string, globalStyleID string, logger *log.Logger) (map[string]interface{}, error) {
 	logger.Printf("[dry-run] 产品 ID: %s", spec.ProductID)
 	logger.Printf("[dry-run] 名称: %s / 类目: %s", spec.Name, spec.Category)
 	colors := spec.Colors()
@@ -208,6 +219,9 @@ func runDryRun(ctx context.Context, cfg Config, spec ProductSpec, images []strin
 	logger.Printf("[dry-run] 分析模型: %s @ %s", cfg.AnalysisModel, cfg.AnalysisBaseURL)
 	logger.Printf("[dry-run] 生图模型: %s @ %s", cfg.ImageModel, cfg.ImageBaseURL)
 	logger.Printf("[dry-run] 输出尺寸: %dx%d (%s)", cfg.FinalSize, cfg.FinalSize, cfg.AspectRatio)
+	if globalStyleID != "" {
+		logger.Printf("[dry-run] 全局风格 ID: %s", globalStyleID)
+	}
 	return map[string]interface{}{
 		"ok":           true,
 		"images":       len(images),
@@ -218,18 +232,32 @@ func runDryRun(ctx context.Context, cfg Config, spec ProductSpec, images []strin
 	}, nil
 }
 
-func runAnalyze(ctx context.Context, cfg Config, spec ProductSpec, images []string, logger *log.Logger) (map[string]interface{}, error) {
+func runAnalyze(ctx context.Context, cfg Config, spec ProductSpec, images []string, globalStyleID string, logger *log.Logger) (map[string]interface{}, error) {
 	if cfg.AnalysisAPIKey == "" {
 		return nil, fmt.Errorf("ANALYSIS_API_KEY 未配置，无法分析")
 	}
 	chatClient := cfg.NewChatClient()
 
 	logger.Printf("[analyze] 加载全局参考风格...")
-	globalStyle, err := LoadOrAnalyzeGlobalStyle(ctx, cfg.Workspace, chatClient, loadImageFile)
-	if err != nil {
-		logger.Printf("[analyze] 全局风格 fallback: %v", err)
+	var globalStyle string
+	var err error
+	if cfg.StyleLoader != nil {
+		globalStyle, err = LoadStylePrompt(cfg.Workspace, cfg.StyleLoader, globalStyleID)
+		if err != nil {
+			logger.Printf("[analyze] 加载风格套失败: %v，使用 fallback", err)
+			globalStyle = FallbackGlobalStylePrompt()
+		} else if globalStyleID != "" {
+			logger.Printf("[analyze] 使用风格套 %s", globalStyleID)
+		} else {
+			logger.Printf("[analyze] 使用 fallback 风格")
+		}
 	} else {
-		logger.Printf("[analyze] 全局风格 OK (%d 字符)", len(globalStyle))
+		globalStyle, err = LoadOrAnalyzeGlobalStyle(ctx, cfg.Workspace, chatClient, loadImageFile)
+		if err != nil {
+			logger.Printf("[analyze] 全局风格 fallback: %v", err)
+		} else {
+			logger.Printf("[analyze] 全局风格 OK (%d 字符)", len(globalStyle))
+		}
 	}
 
 	logger.Printf("[analyze] 加载类目参考风格 (%s)...", spec.Category)
@@ -274,23 +302,23 @@ func runAnalyze(ctx context.Context, cfg Config, spec ProductSpec, images []stri
 	return map[string]interface{}{"ok": true, "plan_path": PlanCachePath(cfg.Workspace, spec.ProductID)}, nil
 }
 
-func runRender(ctx context.Context, cfg Config, spec ProductSpec, images []string, logger *log.Logger) (map[string]interface{}, error) {
-	return runRenderStage(ctx, cfg, spec, images, StageAll, logger)
+func runRender(ctx context.Context, cfg Config, spec ProductSpec, images []string, globalStyleID string, logger *log.Logger) (map[string]interface{}, error) {
+	return runRenderStage(ctx, cfg, spec, images, globalStyleID, StageAll, logger)
 }
 
-func runRenderMain(ctx context.Context, cfg Config, spec ProductSpec, images []string, logger *log.Logger) (map[string]interface{}, error) {
-	return runRenderStage(ctx, cfg, spec, images, StageMain, logger)
+func runRenderMain(ctx context.Context, cfg Config, spec ProductSpec, images []string, globalStyleID string, logger *log.Logger) (map[string]interface{}, error) {
+	return runRenderStage(ctx, cfg, spec, images, globalStyleID, StageMain, logger)
 }
 
-func runRenderSKU(ctx context.Context, cfg Config, spec ProductSpec, images []string, logger *log.Logger) (map[string]interface{}, error) {
-	return runRenderStage(ctx, cfg, spec, images, StageSkus, logger)
+func runRenderSKU(ctx context.Context, cfg Config, spec ProductSpec, images []string, globalStyleID string, logger *log.Logger) (map[string]interface{}, error) {
+	return runRenderStage(ctx, cfg, spec, images, globalStyleID, StageSkus, logger)
 }
 
-func runRenderDetail(ctx context.Context, cfg Config, spec ProductSpec, images []string, logger *log.Logger) (map[string]interface{}, error) {
-	return runRenderStage(ctx, cfg, spec, images, StageDetails, logger)
+func runRenderDetail(ctx context.Context, cfg Config, spec ProductSpec, images []string, globalStyleID string, logger *log.Logger) (map[string]interface{}, error) {
+	return runRenderStage(ctx, cfg, spec, images, globalStyleID, StageDetails, logger)
 }
 
-func runRenderStage(ctx context.Context, cfg Config, spec ProductSpec, images []string, stage RenderStage, logger *log.Logger) (map[string]interface{}, error) {
+func runRenderStage(ctx context.Context, cfg Config, spec ProductSpec, images []string, globalStyleID string, stage RenderStage, logger *log.Logger) (map[string]interface{}, error) {
 	if cfg.ImageAPIKey == "" {
 		return nil, fmt.Errorf("IMAGE_API_KEY 未配置，无法渲染")
 	}
@@ -315,7 +343,7 @@ func runRenderStage(ctx context.Context, cfg Config, spec ProductSpec, images []
 	}, nil
 }
 
-func runGenerate(ctx context.Context, cfg Config, spec ProductSpec, images []string, logger *log.Logger) (map[string]interface{}, error) {
+func runGenerate(ctx context.Context, cfg Config, spec ProductSpec, images []string, globalStyleID string, logger *log.Logger) (map[string]interface{}, error) {
 	if cfg.ImageAPIKey == "" {
 		return nil, fmt.Errorf("IMAGE_API_KEY 未配置")
 	}
@@ -326,9 +354,23 @@ func runGenerate(ctx context.Context, cfg Config, spec ProductSpec, images []str
 	chatClient := cfg.NewChatClient()
 
 	logger.Printf("[generate] 阶段 1/3: 加载/分析风格...")
-	globalStyle, err := LoadOrAnalyzeGlobalStyle(ctx, cfg.Workspace, chatClient, loadImageFile)
-	if err != nil {
-		logger.Printf("[generate] 全局风格 fallback: %v", err)
+	var globalStyle string
+	var err error
+	if cfg.StyleLoader != nil {
+		globalStyle, err = LoadStylePrompt(cfg.Workspace, cfg.StyleLoader, globalStyleID)
+		if err != nil {
+			logger.Printf("[generate] 加载风格套失败: %v，使用 fallback", err)
+			globalStyle = FallbackGlobalStylePrompt()
+		} else if globalStyleID != "" {
+			logger.Printf("[generate] 使用风格套 %s", globalStyleID)
+		} else {
+			logger.Printf("[generate] 使用 fallback 风格")
+		}
+	} else {
+		globalStyle, err = LoadOrAnalyzeGlobalStyle(ctx, cfg.Workspace, chatClient, loadImageFile)
+		if err != nil {
+			logger.Printf("[generate] 全局风格 fallback: %v", err)
+		}
 	}
 	categoryStyle, err := LoadOrAnalyzeCategoryStyle(ctx, cfg.Workspace, chatClient, loadImageFile, spec.Category)
 	if err != nil {

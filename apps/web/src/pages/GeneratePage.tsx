@@ -7,11 +7,20 @@ import {
   CollapsibleTrigger,
 } from "@workspace/ui/components/collapsible"
 import { Button } from "@workspace/ui/components/button"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@workspace/ui/components/select"
 
 import { cacheClient } from "../core/cache-client"
 import { jobClient, type JobKind } from "../core/job-client"
 import { JOB_KIND_LABEL, JOB_STATUS_LABEL, JOB_STATUS_TONE } from "../core/job-meta"
 import { useJobStore } from "../core/job-store"
+import { styleClient, type Style } from "../core/style-client"
+import { settingsClient } from "../core/settings-client"
 import type { Product } from "../core/types"
 import { useConfirm } from "../shared/confirm.tsx"
 import { useMessage } from "../shared/message.tsx"
@@ -36,6 +45,9 @@ export function GeneratePage({
   const [pendingKind, setPendingKind] = useState<JobKind | null>(null)
   const [planText, setPlanText] = useState<string>("")
   const [planOpen, setPlanOpen] = useState(false)
+  const [styles, setStyles] = useState<Style[]>([])
+  const [selectedStyleID, setSelectedStyleID] = useState<string>("")
+  const [styleOpen, setStyleOpen] = useState(false)
   const notify = useMessage()
   const confirm = useConfirm()
   const { jobs } = useJobStore()
@@ -44,6 +56,34 @@ export function GeneratePage({
     () => products.find((item) => item.product_id === selectedId),
     [products, selectedId]
   )
+
+  // Load styles list
+  useEffect(() => {
+    void styleClient.list().then((data) => setStyles(data ?? []))
+  }, [])
+
+  // Load style selection for current product (localStorage → settings default)
+  useEffect(() => {
+    if (!selectedId) return
+    const saved = localStorage.getItem(`product-${selectedId}-style-selection`)
+    if (saved !== null) {
+      setSelectedStyleID(saved)
+    } else {
+      // Read default from settings
+      void settingsClient.list(false).then((items) => {
+        const found = items.find((s) => s.key === "DEFAULT_STYLE_ID")
+        setSelectedStyleID(found?.value || "")
+      })
+    }
+  }, [selectedId])
+
+  // Persist style selection to localStorage
+  function handleStyleChange(value: string) {
+    setSelectedStyleID(value)
+    if (selectedId) {
+      localStorage.setItem(`product-${selectedId}-style-selection`, value)
+    }
+  }
 
   const productJobs = useMemo(
     () => jobs.filter((j) => j.product_id === selectedId).slice(0, 5),
@@ -100,7 +140,7 @@ export function GeneratePage({
     }
     try {
       setPendingKind(kind)
-      await jobClient.start(kind, selectedId)
+      await jobClient.start(kind, selectedId, { global_style_id: selectedStyleID || undefined })
       notify.success("任务已加入队列，可在「日志」页查看进度")
     } catch (error) {
       notify.error(error instanceof Error ? error.message : String(error))
@@ -130,22 +170,62 @@ export function GeneratePage({
 
   return (
     <div className="grid gap-4 xl:grid-cols-[360px_minmax(0,1fr)]">
-      <SectionCard title="任务动作" description="选择需要执行的操作">
-        <div className="space-y-2">
-          {PRIMARY_ACTIONS.map((item) => (
-            <button
-              key={item.key}
+      <div className="space-y-4">
+        <SectionCard
+          title="风格选择"
+          description={selectedStyleID ? styles.find((s) => s.id === selectedStyleID)?.name ?? "未知风格" : "不使用风格"}
+          right={
+            <Button
               type="button"
-              onClick={() => void run(item.key)}
-              disabled={!selectedId || pendingKind !== null}
-              className="w-full rounded-lg border border-border px-3 py-2 text-left transition-colors hover:bg-muted/50 disabled:cursor-not-allowed disabled:opacity-50"
+              variant="outline"
+              size="sm"
+              onClick={() => setStyleOpen((v) => !v)}
             >
-              <div className="text-sm font-medium">{item.label}</div>
-              <div className="text-xs text-muted-foreground">{item.desc}</div>
-            </button>
-          ))}
-        </div>
-      </SectionCard>
+              {styleOpen ? "收起" : "选择"}
+            </Button>
+          }
+        >
+          <Collapsible open={styleOpen} onOpenChange={setStyleOpen}>
+            <CollapsibleContent>
+              <Select value={selectedStyleID} onValueChange={handleStyleChange}>
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="不使用风格" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">不使用</SelectItem>
+                  {styles.map((s) => (
+                    <SelectItem key={s.id} value={s.id}>
+                      {s.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {selectedStyleID && styles.find((s) => s.id === selectedStyleID)?.prompt ? (
+                <div className="mt-2 max-h-20 overflow-auto rounded-md bg-muted p-2 text-xs text-muted-foreground">
+                  {styles.find((s) => s.id === selectedStyleID)?.prompt}
+                </div>
+              ) : null}
+            </CollapsibleContent>
+          </Collapsible>
+        </SectionCard>
+
+        <SectionCard title="任务动作" description="选择需要执行的操作">
+          <div className="space-y-2">
+            {PRIMARY_ACTIONS.map((item) => (
+              <button
+                key={item.key}
+                type="button"
+                onClick={() => void run(item.key)}
+                disabled={!selectedId || pendingKind !== null}
+                className="w-full rounded-lg border border-border px-3 py-2 text-left transition-colors hover:bg-muted/50 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <div className="text-sm font-medium">{item.label}</div>
+                <div className="text-xs text-muted-foreground">{item.desc}</div>
+              </button>
+            ))}
+          </div>
+        </SectionCard>
+      </div>
 
       <div className="space-y-4">
         <SectionCard title="选中产品" description="任务将针对当前产品执行">

@@ -146,6 +146,70 @@ func (c *ChatClient) AnalyzeWithImages(ctx context.Context, images []image.Image
 	return "", fmt.Errorf("analysis API 返回内容为空")
 }
 
+// Chat sends a text-only prompt to the chat completion endpoint (no images).
+func (c *ChatClient) Chat(ctx context.Context, prompt string) (string, error) {
+	if c.APIKey == "" {
+		return "", fmt.Errorf("ANALYSIS_API_KEY 未配置")
+	}
+	if c.BaseURL == "" {
+		return "", fmt.Errorf("ANALYSIS_API_BASE_URL 未配置")
+	}
+	if c.Model == "" {
+		return "", fmt.Errorf("ANALYSIS_MODEL 未配置")
+	}
+
+	content := []chatContent{{Type: "text", Text: prompt}}
+	body, err := json.Marshal(chatRequest{
+		Model:    c.Model,
+		Messages: []chatMessage{{Role: "user", Content: content}},
+		Stream:   false,
+	})
+	if err != nil {
+		return "", err
+	}
+
+	endpoint := strings.TrimRight(c.BaseURL, "/")
+	if !strings.HasSuffix(endpoint, "/v1") {
+		endpoint += "/v1"
+	}
+	endpoint += "/chat/completions"
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+c.APIKey)
+
+	resp, err := c.HTTP.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("analysis API 请求失败: %w", err)
+	}
+	defer resp.Body.Close()
+
+	var payload chatResponse
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		return "", fmt.Errorf("analysis API 响应解析失败 (status %d): %w", resp.StatusCode, err)
+	}
+	if resp.StatusCode >= 400 || payload.Error != nil {
+		return "", fmt.Errorf("analysis API 错误 status=%d body=%v", resp.StatusCode, payload.Error)
+	}
+	if len(payload.Choices) == 0 {
+		return "", fmt.Errorf("analysis API 没有返回 choices")
+	}
+	msg := payload.Choices[0].Message
+	if text := strings.TrimSpace(msg.Content); text != "" {
+		return text, nil
+	}
+	if text := strings.TrimSpace(msg.ReasoningContent); text != "" {
+		return text, nil
+	}
+	if text := strings.TrimSpace(msg.Reasoning); text != "" {
+		return text, nil
+	}
+	return "", fmt.Errorf("analysis API 返回内容为空")
+}
+
 func imageToDataURI(img image.Image) (string, error) {
 	var buf bytes.Buffer
 	if err := jpeg.Encode(&buf, img, &jpeg.Options{Quality: 85}); err != nil {

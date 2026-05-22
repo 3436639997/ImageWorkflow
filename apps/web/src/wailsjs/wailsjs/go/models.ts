@@ -85,6 +85,20 @@ export namespace output {
 
 export namespace product {
 	
+	export class DetectColorsResult {
+	    colors: string[];
+	    hero_color: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new DetectColorsResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.colors = source["colors"];
+	        this.hero_color = source["hero_color"];
+	    }
+	}
 	export class Product {
 	    product_id: string;
 	    name: string;
@@ -264,6 +278,45 @@ export namespace settings {
 	        this.secret = source["secret"];
 	        this.hasValue = source["hasValue"];
 	        this.group = source["group"];
+	    }
+	}
+
+}
+
+export namespace style {
+	
+	export class Style {
+	    id: string;
+	    name: string;
+	    prompt: string;
+	    reference_images: string[];
+	    created_at: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new Style(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.prompt = source["prompt"];
+	        this.reference_images = source["reference_images"];
+	        this.created_at = source["created_at"];
+	    }
+	}
+	export class StyleInput {
+	    name: string;
+	    prompt: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new StyleInput(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.prompt = source["prompt"];
 	    }
 	}
 

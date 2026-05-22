@@ -85,6 +85,7 @@ var globalKeys = map[string]bool{
 	"WORKSPACE_DIR":               true,
 	"JOB_TIMEOUT_SECONDS":         true,
 	"API_REQUEST_TIMEOUT_SECONDS": true,
+	"DEFAULT_STYLE_ID":            true,
 }
 
 // presetKeys is the list of keys persisted per preset.
@@ -130,6 +131,7 @@ func NewService(ws *workspace.Resolver) *Service {
 			"WORKSPACE_DIR":                   workspace.DefaultRoot(),
 			"JOB_TIMEOUT_SECONDS":             "0",
 			"API_REQUEST_TIMEOUT_SECONDS":     "0",
+			"DEFAULT_STYLE_ID":                "",
 		},
 		groups: map[string]string{
 			"ANALYSIS_API_BASE_URL":           "gateway",
@@ -148,6 +150,7 @@ func NewService(ws *workspace.Resolver) *Service {
 			"WORKSPACE_DIR":                   "workspace",
 			"JOB_TIMEOUT_SECONDS":             "workspace",
 			"API_REQUEST_TIMEOUT_SECONDS":     "workspace",
+			"DEFAULT_STYLE_ID":                "workspace",
 		},
 		secrets: map[string]bool{
 			"ANALYSIS_API_KEY": true,

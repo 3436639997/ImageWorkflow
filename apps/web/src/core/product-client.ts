@@ -1,6 +1,7 @@
 import {
 	DeleteProduct,
 	DeleteProductImage,
+	DetectColors,
 	GetProduct,
 	ListProducts,
 	SaveProduct,
@@ -12,6 +13,7 @@ import type { Product } from "./types"
 
 export type ProductDetail = product.ProductDetail
 export type ProductImage = product.ProductImage
+export type DetectColorsResult = product.DetectColorsResult
 
 export type ProductCreateInput = {
 	product_id: string
@@ -68,5 +70,8 @@ export const productClient = {
 	},
 	deleteImage(productId: string, filename: string): Promise<void> {
 		return DeleteProductImage(productId, filename)
+	},
+	detectColors(productId: string): Promise<DetectColorsResult> {
+		return DetectColors(productId)
 	},
 }

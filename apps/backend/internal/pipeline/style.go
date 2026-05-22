@@ -15,6 +15,16 @@ import (
 	"ImageWorkflow/apps/backend/internal/workspace"
 )
 
+// StyleLoader is an interface for loading style prompts by ID.
+type StyleLoader interface {
+	GetStyle(id string) (StyleData, error)
+}
+
+// StyleData represents style prompt data.
+type StyleData struct {
+	Prompt string
+}
+
 const (
 	globalStyleCacheFile = "sage_reference_global_style.json"
 	categoryStylePrefix  = "sage_reference_category_"
@@ -205,4 +215,20 @@ func LoadOrAnalyzeCategoryStyle(ctx context.Context, ws *workspace.Resolver, cli
 	}
 	_ = saveStyleCache(cachePath, styleCacheEnvelope{Snapshot: snapshot, Prompt: prompt})
 	return prompt, nil
+}
+
+// LoadStylePrompt loads a style prompt by ID from the style service.
+// If styleID is empty, returns the fallback global style prompt.
+// If styleID is not found, returns an error.
+func LoadStylePrompt(ws *workspace.Resolver, loader StyleLoader, styleID string) (string, error) {
+	if styleID == "" {
+		return FallbackGlobalStylePrompt(), nil
+	}
+
+	style, err := loader.GetStyle(styleID)
+	if err != nil {
+		return "", fmt.Errorf("风格套 %s 不存在: %w", styleID, err)
+	}
+
+	return style.Prompt, nil
 }

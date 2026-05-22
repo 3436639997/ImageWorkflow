@@ -1,4 +1,4 @@
-export type TopPage = "products" | "cache" | "settings"
+export type TopPage = "products" | "styles" | "cache" | "settings"
 export type ProductTab = "assets" | "generate" | "outputs" | "logs"
 
 export type Product = {

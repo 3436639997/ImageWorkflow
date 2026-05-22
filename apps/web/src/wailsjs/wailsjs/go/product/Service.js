@@ -10,6 +10,10 @@ export function DeleteProductImage(arg1, arg2) {
   return window['go']['product']['Service']['DeleteProductImage'](arg1, arg2);
 }
 
+export function DetectColors(arg1) {
+  return window['go']['product']['Service']['DetectColors'](arg1);
+}
+
 export function GetProduct(arg1) {
   return window['go']['product']['Service']['GetProduct'](arg1);
 }

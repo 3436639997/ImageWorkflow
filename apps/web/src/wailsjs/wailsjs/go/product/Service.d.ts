@@ -6,6 +6,8 @@ export function DeleteProduct(arg1:string):Promise<void>;
 
 export function DeleteProductImage(arg1:string,arg2:string):Promise<void>;
 
+export function DetectColors(arg1:string):Promise<product.DetectColorsResult>;
+
 export function GetProduct(arg1:string):Promise<product.ProductDetail>;
 
 export function ListProducts():Promise<Array<product.Product>>;

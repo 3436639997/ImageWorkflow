@@ -1,14 +1,22 @@
 package product
 
 import (
+	"context"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
+	"image"
+	_ "image/gif"
+	_ "image/jpeg"
+	_ "image/png"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 
 	"ImageWorkflow/apps/backend/internal/manifest"
+	"ImageWorkflow/apps/backend/internal/pipeline"
+	"ImageWorkflow/apps/backend/internal/settings"
 	"ImageWorkflow/apps/backend/internal/workspace"
 )
 
@@ -49,12 +57,14 @@ type ProductDetail struct {
 type Service struct {
 	workspace *workspace.Resolver
 	manifest  *manifest.Service
+	settings  *settings.Service
 }
 
-func NewService(ws *workspace.Resolver, m *manifest.Service) *Service {
+func NewService(ws *workspace.Resolver, m *manifest.Service, set *settings.Service) *Service {
 	return &Service{
 		workspace: ws,
 		manifest:  m,
+		settings:  set,
 	}
 }
 
@@ -364,4 +374,99 @@ func safeFilename(name string) string {
 		return ""
 	}
 	return name
+}
+
+// DetectColorsResult holds the AI-detected colors for a product.
+type DetectColorsResult struct {
+	Colors    []string `json:"colors"`
+	HeroColor string   `json:"hero_color"`
+}
+
+// DetectColors analyzes a product's uploaded images and returns detected colors.
+func (s *Service) DetectColors(productID string) (DetectColorsResult, error) {
+	id := safeID(productID)
+	if id == "" {
+		return DetectColorsResult{}, fmt.Errorf("product_id is required")
+	}
+
+	// Check settings
+	values, err := s.settings.ResolveAll()
+	if err != nil {
+		return DetectColorsResult{}, fmt.Errorf("读取设置失败: %w", err)
+	}
+	apiKey := values["ANALYSIS_API_KEY"]
+	if apiKey == "" {
+		return DetectColorsResult{}, fmt.Errorf("ANALYSIS_API_KEY 未配置，请先在设置页配置分析接口")
+	}
+
+	// Load product images
+	folder := s.workspace.ProductFolder(id)
+	entries, err := os.ReadDir(folder)
+	if err != nil {
+		return DetectColorsResult{}, fmt.Errorf("读取产品文件夹失败: %w", err)
+	}
+
+	var imgs []image.Image
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		ext := strings.ToLower(filepath.Ext(entry.Name()))
+		if !supportedImageExts[ext] {
+			continue
+		}
+		f, err := os.Open(filepath.Join(folder, entry.Name()))
+		if err != nil {
+			continue
+		}
+		img, _, err := image.Decode(f)
+		f.Close()
+		if err != nil {
+			continue
+		}
+		imgs = append(imgs, img)
+	}
+
+	if len(imgs) == 0 {
+		return DetectColorsResult{}, fmt.Errorf("产品 %s 下没有素材图，请先上传图片", id)
+	}
+
+	// Call analysis API
+	chatClient := pipeline.NewChatClient(
+		values["ANALYSIS_API_BASE_URL"],
+		apiKey,
+		values["ANALYSIS_MODEL"],
+	)
+
+	prompt := `Analyze these product images and identify all distinct product color variants shown.
+
+Return a JSON object with exactly this format (no markdown, no extra text):
+{"colors": ["color1", "color2", ...], "hero_color": "most_prominent_color"}
+
+Rules:
+- List each color variant once, using simple Chinese color names (如：黑色、白色、米色、深蓝色、酒红色)
+- "hero_color" should be the most prominent or featured color
+- If only one color is shown, list just that one
+- Do NOT list background colors or packaging colors, only the product itself`
+
+	ctx := context.Background()
+	result, err := chatClient.AnalyzeWithImages(ctx, imgs, prompt)
+	if err != nil {
+		return DetectColorsResult{}, fmt.Errorf("AI 分析失败: %w", err)
+	}
+
+	// Parse JSON response
+	var detected DetectColorsResult
+	// Try to extract JSON from the response (may have markdown wrapping)
+	jsonStr := result
+	if idx := strings.Index(jsonStr, "{"); idx >= 0 {
+		if end := strings.LastIndex(jsonStr, "}"); end > idx {
+			jsonStr = jsonStr[idx : end+1]
+		}
+	}
+	if err := json.Unmarshal([]byte(jsonStr), &detected); err != nil {
+		return DetectColorsResult{}, fmt.Errorf("AI 返回格式异常: %s", result)
+	}
+
+	return detected, nil
 }
